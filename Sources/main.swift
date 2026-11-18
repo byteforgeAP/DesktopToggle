@@ -71,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let worker = DispatchQueue(label: "DesktopToggle.worker")
     private var covers: [NSPanel] = []
     private var imageCache: [URL: NSImage] = [:] // avoid re-decoding big wallpapers on every Space switch
-    private var unreadableWallpaper: URL?          // set when the instant method had to fall back
+    private var slowModeReason: String?            // set when the instant method had to fall back
 
     private static let finder = "com.apple.finder" as CFString
     private static let createDesktop = "CreateDesktop" as CFString
@@ -105,11 +105,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let menu = NSMenu()
             menu.addItem(withTitle: iconsHidden ? "Show Desktop Icons" : "Hide Desktop Icons",
                          action: #selector(toggle), keyEquivalent: "").target = self
-            if unreadableWallpaper != nil {
+            if let reason = slowModeReason {
                 menu.addItem(.separator())
-                menu.addItem(withTitle: "Slow mode: macOS blocked reading your wallpaper", action: nil, keyEquivalent: "")
-                menu.addItem(withTitle: "Allow Full Disk Access for Instant Mode…",
-                             action: #selector(openFullDiskAccess), keyEquivalent: "").target = self
+                menu.addItem(withTitle: "Slow mode: \(reason)", action: nil, keyEquivalent: "")
+                menu.addItem(withTitle: "Choose a Still Wallpaper for Instant Mode…",
+                             action: #selector(openWallpaperSettings), keyEquivalent: "").target = self
             }
             menu.addItem(.separator())
             menu.addItem(withTitle: hotKeyRegistered ? "Shortcut: ⌃⌥D" : "Shortcut ⌃⌥D is used by another app",
@@ -176,22 +176,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !showCovers() { updateIcon() } // wallpaper became unreadable: icons are visible again
     }
 
-    @objc private func openFullDiskAccess() {
-        let pane = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
-        if let url = URL(string: pane) { NSWorkspace.shared.open(url) }
+    @objc private func openWallpaperSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
+    // Returns the wallpaper only when a still copy will look identical to the real Desktop.
     private func wallpaperImage(at url: URL) -> NSImage? {
         if let cached = imageCache[url] { return cached }
-        guard let image = NSImage(contentsOf: url), image.isValid else {
-            // Usually macOS privacy protection: the file lives inside another app's container.
-            NSLog("DesktopToggle: can't read wallpaper at \(url.path); using the Finder method")
-            unreadableWallpaper = url
-            return nil
+
+        if url.path.contains("/com.apple.wallpaper/aerials/") || url.pathExtension.lowercased() == "mov" {
+            return fallBack("Aerial or video wallpapers can't be covered", url)
         }
-        unreadableWallpaper = nil
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            // Usually macOS privacy protection: the file lives inside another app's container.
+            return fallBack("macOS blocked reading your wallpaper", url)
+        }
+        if CGImageSourceGetCount(source) > 1 {
+            // Light/dark or time-of-day wallpaper: a single frame wouldn't always match.
+            return fallBack("dynamic wallpapers can't be covered", url)
+        }
+        guard let image = NSImage(contentsOf: url), image.isValid else {
+            return fallBack("macOS blocked reading your wallpaper", url)
+        }
+        slowModeReason = nil
         imageCache = [url: image] // keep only the current wallpaper in memory
         return image
+    }
+
+    private func fallBack(_ reason: String, _ url: URL) -> NSImage? {
+        NSLog("DesktopToggle: \(reason) (\(url.path)); using the Finder method")
+        slowModeReason = reason
+        return nil
     }
 
     private func wallpaperView(for screen: NSScreen) -> WallpaperView? {
