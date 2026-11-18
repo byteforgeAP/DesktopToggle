@@ -2,6 +2,8 @@
 
 A tiny macOS menu bar app that hides and shows all your Desktop icons with one click.
 
+![DesktopToggle demo](assets/demo.gif)
+
 - **Click the eye icon** in the menu bar to hide your Desktop icons. Click again to bring them back.
 - **Press `Ctrl + Option + D`** from anywhere to do the same.
 - **Right-click the eye** for a menu with Quit.
@@ -62,4 +64,5 @@ Resources/local.ayush.DesktopToggle.plist  Login item template
 build.sh                                   Builds build/DesktopToggle.app
 install.sh                                 Builds, installs and starts at login
 uninstall.sh                               Removes everything and shows icons again
+assets/demo.gif                            Demo shown above
 ```
