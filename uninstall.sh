@@ -2,11 +2,11 @@
 # Stops the app, removes it and its login item, and makes Desktop icons visible again.
 set -euo pipefail
 
-LABEL="local.ayush.DesktopToggle"
-
-launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+for LABEL in "io.github.byteforgeap.DesktopToggle" "local.ayush.DesktopToggle"; do
+    launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+    rm -f "$HOME/Library/LaunchAgents/$LABEL.plist"
+done
 pkill -x DesktopToggle 2>/dev/null || true
-rm -f "$HOME/Library/LaunchAgents/$LABEL.plist"
 rm -rf "$HOME/Applications/DesktopToggle.app"
 
 # Don't leave the icons hidden.

@@ -3,14 +3,18 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-LABEL="local.ayush.DesktopToggle"
+LABEL="io.github.byteforgeap.DesktopToggle"
+OLD_LABEL="local.ayush.DesktopToggle" # used by versions before 1.0.1
 DEST="$HOME/Applications/DesktopToggle.app"
 AGENT="$HOME/Library/LaunchAgents/$LABEL.plist"
 
 ./build.sh
 
-# Stop a running copy before replacing it.
-launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+# Stop a running copy (and any old-label login item) before replacing it.
+for l in "$LABEL" "$OLD_LABEL"; do
+    launchctl bootout "gui/$(id -u)/$l" 2>/dev/null || true
+done
+rm -f "$HOME/Library/LaunchAgents/$OLD_LABEL.plist"
 pkill -x DesktopToggle 2>/dev/null || true
 
 mkdir -p "$HOME/Applications" "$HOME/Library/LaunchAgents"

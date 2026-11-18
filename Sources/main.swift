@@ -5,6 +5,7 @@ import Carbon.HIToolbox
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var hotKeyRef: EventHotKeyRef?
+    private var hotKeyRegistered = false
 
     private var iconsHidden: Bool {
         let v = CFPreferencesCopyAppValue("CreateDesktop" as CFString, "com.apple.finder" as CFString)
@@ -27,8 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(withTitle: iconsHidden ? "Show Desktop Icons" : "Hide Desktop Icons",
                          action: #selector(toggle), keyEquivalent: "").target = self
             menu.addItem(.separator())
-            menu.addItem(withTitle: "Shortcut: ⌃⌥D", action: nil, keyEquivalent: "")
-            menu.addItem(withTitle: "Quit DesktopToggle", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            menu.addItem(withTitle: hotKeyRegistered ? "Shortcut: ⌃⌥D" : "Shortcut ⌃⌥D is used by another app",
+                         action: nil, keyEquivalent: "")
+            menu.addItem(withTitle: "Quit DesktopToggle", action: #selector(quit), keyEquivalent: "q").target = self
             statusItem.menu = menu
             statusItem.button?.performClick(nil)
             statusItem.menu = nil
@@ -38,18 +40,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func toggle() {
-        let hide = !iconsHidden
-        let defaults = Process()
-        defaults.launchPath = "/usr/bin/defaults"
-        defaults.arguments = ["write", "com.apple.finder", "CreateDesktop", "-bool", hide ? "false" : "true"]
-        defaults.launch(); defaults.waitUntilExit()
+        setIconsHidden(!iconsHidden)
+    }
 
-        let restart = Process()
-        restart.launchPath = "/usr/bin/killall"
-        restart.arguments = ["Finder"]
-        restart.launch(); restart.waitUntilExit()
-
+    private func setIconsHidden(_ hide: Bool) {
+        run("/usr/bin/defaults", ["write", "com.apple.finder", "CreateDesktop", "-bool", hide ? "false" : "true"])
+        run("/usr/bin/killall", ["Finder"])
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.updateIcon() }
+    }
+
+    // Once the app is gone there's no button left to bring the icons back, so show them on quit.
+    @objc private func quit() {
+        if iconsHidden { setIconsHidden(false) }
+        NSApp.terminate(nil)
+    }
+
+    private func run(_ path: String, _ args: [String]) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: path)
+        p.arguments = args
+        do { try p.run(); p.waitUntilExit() } catch { NSLog("DesktopToggle: failed to run \(path): \(error)") }
     }
 
     private func updateIcon() {
@@ -70,8 +80,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), nil)
 
         let id = EventHotKeyID(signature: OSType(0x44544F47), id: 1) // 'DTOG'
-        RegisterEventHotKey(UInt32(kVK_ANSI_D), UInt32(controlKey | optionKey), id,
-                            GetApplicationEventTarget(), 0, &hotKeyRef)
+        let status = RegisterEventHotKey(UInt32(kVK_ANSI_D), UInt32(controlKey | optionKey), id,
+                                         GetApplicationEventTarget(), 0, &hotKeyRef)
+        hotKeyRegistered = (status == noErr)
+        if !hotKeyRegistered { NSLog("DesktopToggle: Ctrl+Option+D is already taken (status \(status))") }
     }
 }
 
